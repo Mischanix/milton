@@ -41,10 +41,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 #define LOG_TAG "SDL_android"
-/* #define LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__) */
-/* #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__) */
-#define LOGI(...) do {} while (false)
-#define LOGE(...) do {} while (false)
+#define LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
+#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
+/* #define LOGI(...) do {} while (false) */
+/* #define LOGE(...) do {} while (false) */
 
 /* Uncomment this to log messages entering and exiting methods in this file */
 /* #define DEBUG_JNI */

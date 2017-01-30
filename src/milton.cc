@@ -438,7 +438,7 @@ milton_init(MiltonState* milton_state, i32 width, i32 height)
     milton_state->last_mode = MiltonMode_NONE;
 
 
-    milton_state->gl = arena_alloc_elem(&milton_state->root_arena, MiltonGLState);
+    milton_state->gl = (MiltonGLState *)calloc(1, sizeof(MiltonGLState));
 
 #if 1
     milton_state->blocks_per_blockgroup = 16;
@@ -1229,6 +1229,7 @@ milton_update_and_render(MiltonState* milton_state, MiltonInput* input)
     }
 
     // Set the hover point as the last point of the working stroke.
+    milton_log("np = %d\n", milton_state->working_stroke.num_points);
     if ( is_user_drawing(milton_state) ) {
         i32 np = milton_state->working_stroke.num_points;
         if ( np > 0 ) {

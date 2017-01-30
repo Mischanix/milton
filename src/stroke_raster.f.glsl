@@ -38,8 +38,8 @@ sample_stroke(vec2 point, vec3 a, vec3 b)
     // Check against a circle of pressure*brush_size at each point, which is cheap.
     float dist_a = distance(point, a.xy);
     float dist_b = distance(point, b.xy);
-    float radius_a = float(a.z*u_radius);
-    float radius_b = float(b.z*u_radius);
+    float radius_a = float(a.z*float(u_radius));
+    float radius_b = float(b.z*float(u_radius));
     if ( dist_a < radius_a || dist_b < radius_b ) {
         value = 1;
     }
@@ -48,12 +48,12 @@ sample_stroke(vec2 point, vec3 a, vec3 b)
         vec2 ab = b.xy - a.xy;
         float ab_magnitude_squared = ab.x*ab.x + ab.y*ab.y;
 
-        if ( ab_magnitude_squared > 0 ) {
+        if ( ab_magnitude_squared > 0.0 ) {
             vec3 stroke_point = closest_point_in_segment_gl(a.xy, b.xy, ab, ab_magnitude_squared, point);
             // z coordinate of a and b has pressure values.
             // z coordinate of stroke_point has interpolation between them for closes point.
             float pressure = mix(a.z, b.z, stroke_point.z);
-            if ( distance(stroke_point.xy, point) < u_radius*pressure ) {
+            if ( distance(stroke_point.xy, point) < float(u_radius)*pressure ) {
                 value = 1;
             }
         }
@@ -81,9 +81,9 @@ main()
 
     vec2 screen_point = vec2(gl_FragCoord.x, u_screen_size.y - gl_FragCoord.y) + offset;
 
-    int sample = sample_stroke(raster_to_canvas_gl(screen_point), v_pointa, v_pointb);
+    int hit = sample_stroke(raster_to_canvas_gl(screen_point), v_pointa, v_pointb);
 
-    if ( sample > 0 ) {
+    if ( hit > 0 ) {
         // TODO: is there a way to do front-to-back rendering with a working eraser?
         if ( brush_is_eraser() ) {
             #if HAS_TEXTURE_MULTISAMPLE

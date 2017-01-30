@@ -29,6 +29,8 @@
 #include "SDL_androidvideo.h"
 #include "SDL_androidwindow.h"
 
+#include <android/log.h>
+
 int
 Android_CreateWindow(_THIS, SDL_Window * window)
 {
@@ -70,6 +72,7 @@ Android_CreateWindow(_THIS, SDL_Window * window)
     }
     
     data->egl_surface = SDL_EGL_CreateSurface(_this, (NativeWindowType) data->native_window);
+    __android_log_print(ANDROID_LOG_INFO, "SDL_window","egl surface (%p)\n", data->egl_surface);
 
     if (data->egl_surface == EGL_NO_SURFACE) {
         ANativeWindow_release(data->native_window);

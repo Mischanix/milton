@@ -60,31 +60,31 @@ hsv_to_rgb(vec3 hsv)
     if( hi == 0 || hi == 6 ) {
         rgb.r = cr;
         rgb.g = x;
-        rgb.b = 0;
+        rgb.b = 0.0;
     }
     if( hi == 1 ) {
         rgb.r = x;
         rgb.g = cr;
-        rgb.b = 0;
+        rgb.b = 0.0;
     }
     if( hi == 2 ) {
-        rgb.r = 0;
+        rgb.r = 0.0;
         rgb.g = cr;
         rgb.b = x;
     }
     if( hi == 3 ) {
-        rgb.r = 0;
+        rgb.r = 0.0;
         rgb.g = x;
         rgb.b = cr;
     }
     if( hi == 4 ) {
         rgb.r = x;
-        rgb.g = 0;
+        rgb.g = 0.0;
         rgb.b = cr;
     }
     if( hi == 5 ) {
         rgb.r = cr;
-        rgb.g = 0;
+        rgb.g = 0.0;
         rgb.b = x;
     }
     rgb.r += m;
@@ -108,9 +108,9 @@ bool
 is_inside_triangle(vec2 p)
 {
     bool is_inside =
-           (orientation(u_pointa, u_pointb, p) <= 0) &&
-           (orientation(u_pointb, u_pointc, p) <= 0) &&
-           (orientation(u_pointc, u_pointa, p) <= 0);
+           (orientation(u_pointa, u_pointb, p) <= 0.0) &&
+           (orientation(u_pointb, u_pointc, p) <= 0.0) &&
+           (orientation(u_pointc, u_pointa, p) <= 0.0);
     return is_inside;
 }
 
@@ -120,7 +120,7 @@ main()
     // NOTE:
     //  These constants gotten from gui.cc in gui_init. From bounds_radius_px, wheel_half_width, and so on.
     float half_width = 12.0 / 100.0;
-    float radius = 1.0 - (12.0 + 5) / 100.0;
+    float radius = 1.0 - (12.0 + 5.0) / 100.0;
 
 
     /* vec2 screen_point = vec2(gl_FragCoord.x, u_screen_size.y-gl_FragCoord.y); */
@@ -129,7 +129,7 @@ main()
     /* vec4 color = texture(u_canvas, coord); */
     vec4 color = vec4(0.5,0.5,0.55,0.4);
 
-    float dist = distance(vec2(0), v_norm);
+    float dist = distance(vec2(0.0), v_norm);
     // Wheel and triangle
     // Show chosen color in preview circle
     vec2 preview_center = vec2(0.75,-0.75);
@@ -137,58 +137,58 @@ main()
 
     float dist_to_preview = distance(preview_center, v_norm);
     if ( dist_to_preview < preview_radius ) {
-        color = vec4(0,0,0,1);
+        color = vec4(0.0,0.0,0.0,1.0);
         const float epsilon = 0.02;
         if ( dist_to_preview < preview_radius - epsilon ) {
-            color = vec4(u_color, 1);
+            color = vec4(u_color, 1.0);
         }
     }
     else if ( dist < radius+half_width ) {
         // Wheel
         if ( dist > radius-half_width ) {
             vec2 n = v_norm;
-            vec2 v = vec2(1, 0);
+            vec2 v = vec2(1.0, 0.0);
             float angle = acos(dot(n, v)/ (length(n) * length(v)));
-            if ( v_norm.y > 0 ) {
-                angle = (2*PI) - angle;
+            if ( v_norm.y > 0.0 ) {
+                angle = (2.0*PI) - angle;
             }
             vec3 hsv = vec3(radians_to_degrees(angle),1.0,1.0);
             //vec3 hsv = vec3(angle,1.0,1.0);
             vec3 rgb = hsv_to_rgb(hsv);
-            color = vec4(rgb,1);
+            color = vec4(rgb,1.0);
         }
         // Triangle
         else if ( is_inside_triangle(v_norm) ) {
             // NOTE(Tilmann): Instead of doing this you could just have OpenGL draw a triangle with linearly interpolated vertex colors.
             float area = orientation(u_pointa, u_pointb, u_pointc);
-            float inv_area = 1.0f / area;
-            float v = 1 - (orientation(v_norm, u_pointc, u_pointa) * inv_area);
+            float inv_area = 1.0 / area;
+            float v = 1.0 - (orientation(v_norm, u_pointc, u_pointa) * inv_area);
             float s = orientation(u_pointb, v_norm, u_pointa) * inv_area / v;
             vec3 pure_color = hsv_to_rgb(vec3(u_angle,1.0,1.0));
             color = vec4((1.0-(1.0-pure_color)*s)*v,1.0);
         }
     }
     // Render buttons
-    else if ( v_norm.y >= 1 ) {
+    else if ( v_norm.y >= 1.0 ) {
         // Get the color for the rects
-        int rect_i = int(((v_norm.x+1)/4) * 10);
+        int rect_i = int(((v_norm.x+1.0)/4.0) * 10.0);
         vec4 rect_color = u_colors[rect_i];
         color = rect_color;
 
         // Black outlines
-        float h = ((v_norm.x+1)/4)*10;
+        float h = ((v_norm.x+1.0)/4.0)*10.0;
         float epsilon = 0.01;
         float epsilon2 = 0.015;
         if ( v_norm.y > 1.4-epsilon
-             || v_norm.y < 1+epsilon
-             || (h <     epsilon2 && h >   - epsilon2)
-             || (h < 1 + epsilon2 && h > 1 - epsilon2)
-             || (h < 2 + epsilon2 && h > 2 - epsilon2)
-             || (h < 3 + epsilon2 && h > 3 - epsilon2)
-             || (h < 4 + epsilon2 && h > 4 - epsilon2)
-             || (h < 5 + epsilon2 && h > 5 - epsilon2)
-             || (h < 6 + epsilon2 && h > 6 - epsilon2) ) {
-            color = vec4(0,0,0,1);
+             || v_norm.y < 1.0+epsilon
+             || (h <       epsilon2 && h >     - epsilon2)
+             || (h < 1.0 + epsilon2 && h > 1.0 - epsilon2)
+             || (h < 2.0 + epsilon2 && h > 2.0 - epsilon2)
+             || (h < 3.0 + epsilon2 && h > 3.0 - epsilon2)
+             || (h < 4.0 + epsilon2 && h > 4.0 - epsilon2)
+             || (h < 5.0 + epsilon2 && h > 5.0 - epsilon2)
+             || (h < 6.0 + epsilon2 && h > 6.0 - epsilon2) ) {
+            color = vec4(0.0,0.0,0.0,1.0);
         }
     }
 
@@ -196,7 +196,7 @@ main()
     const float point_radius = 0.05;
     const float girth = 0.01;
     if ( dist_to_choice < point_radius+girth && dist_to_choice > point_radius-girth ) {
-        color.rgb = vec3(1- color.r, 1 - color.g, 1 - color.b);
+        color.rgb = vec3(1.0- color.r, 1.0 - color.g, 1.0 - color.b);
     }
 
     out_color = color;

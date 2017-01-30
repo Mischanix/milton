@@ -162,7 +162,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef __linux__
+#if defined(__linux__) && !defined(ANDROID)
 #include <X11/extensions/XInput.h>
 #endif // __linux__
 
@@ -624,7 +624,8 @@ typedef struct
 
     EasyTab_Orientation Orientation;
 
-#ifdef __linux__
+#if defined(ANDROID)
+#elif defined(__linux__)
     XDevice* Device;
     uint32_t MotionType;
     uint32_t ProximityTypeIn;
@@ -677,7 +678,11 @@ extern EasyTabInfo* EasyTab;
 // -----------------------------------------------------------------------------
 // Function declarations
 // -----------------------------------------------------------------------------
-#if defined(__linux__)
+#if defined(ANDROID)
+    EasyTabResult EasyTab_Load(SDL_Window *w);
+    EasyTabResult EasyTab_HandleEvent(SDL_TouchFingerEvent *Event);
+    void EasyTab_Unload();
+#elif defined(__linux__)
 
     EasyTabResult EasyTab_Load(Display* Disp, Window Win);
     EasyTabResult EasyTab_HandleEvent(XEvent* Event);
@@ -718,10 +723,45 @@ extern EasyTabInfo* EasyTab;
 
 EasyTabInfo* EasyTab;
 
+// ----------------------
+// Android implementation
+// ----------------------
+#if defined(ANDROID)
+
+EasyTabResult EasyTab_Load(SDL_Window *w) {
+    EasyTab = (EasyTabInfo*)calloc(1, sizeof(EasyTabInfo)); // We want init to zero, hence calloc.
+    if (!EasyTab) { return EASYTAB_MEMORY_ERROR; }
+
+    SDL_GetWindowSize(w, &EasyTab->RangeX, &EasyTab->RangeY);
+
+    return EASYTAB_OK;
+}
+
+EasyTabResult EasyTab_HandleEvent(SDL_TouchFingerEvent *e) {
+    EasyTab->Pressure[0] = e->pressure;
+    EasyTab->PosX[0] = (int)(e->x * EasyTab->RangeX);
+    EasyTab->PosY[0] = (int)(e->y * EasyTab->RangeY);
+
+    if (EasyTab->Pressure[0] > 0.0f)
+    {
+        EasyTab->Buttons |= EasyTab_Buttons_Pen_Touch;
+    }
+    else
+    {
+        EasyTab->Buttons &= ~EasyTab_Buttons_Pen_Touch;
+    }
+
+    EasyTab->NumPackets = 1;
+
+    return EASYTAB_OK;
+}
+
+void EasyTab_Unload() {}
+
 // -----------------------------------------------------------------------------
 // Linux implementation
 // -----------------------------------------------------------------------------
-#ifdef __linux__
+#elif defined(__linux__)
 
 EasyTabResult EasyTab_Load(Display* Disp, Window Win)
 {

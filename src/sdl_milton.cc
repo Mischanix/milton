@@ -9,6 +9,30 @@
 #include "gui.h"
 #include "persist.h"
 
+static void restart_gl(MiltonState *milton_state, SDL_Window* window)
+{
+    if (SDL_GL_GetCurrentContext()) {
+        return;
+    }
+
+    SDL_GLContext gl_context = SDL_GL_CreateContext(window);
+    i32 width, height;
+    SDL_GetWindowSize(window, &width, &height);
+
+    milton_log("gl_context = %p\n", gl_context);
+
+    if ( !gl_context ) {
+        milton_die_gracefully("Could not create OpenGL context\n");
+    }
+
+    free(milton_state->render_data);
+    free(milton_state->gl);
+    milton_state->render_data = gpu_allocate_render_data(&milton_state->root_arena);
+    milton_state->gl = (MiltonGLState *)calloc(1, sizeof(MiltonGLState));
+    milton_state->view->screen_size = { width, height };
+    EasyTab->RangeX = width;
+    EasyTab->RangeY = height;
+}
 
 static void
 cursor_set_and_show(SDL_Cursor* cursor)
@@ -127,6 +151,9 @@ sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
 #pragma warning (push)
 #pragma warning (disable : 4061)
 #endif
+        EasyTabResult er = EASYTAB_EVENT_NOT_HANDLED;
+        i32 bit_touch_old = EasyTab ? (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch) : 0;
+
         switch ( event.type ) {
         case SDL_QUIT:
             platform_cursor_show();
@@ -135,10 +162,7 @@ sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
         case SDL_SYSWMEVENT: {
                 f32 pressure = NO_PRESSURE_INFO;
                 SDL_SysWMEvent sysevent = event.syswm;
-                EasyTabResult er = EASYTAB_EVENT_NOT_HANDLED;
                 if (!EasyTab) { break; }
-
-                i32 bit_touch_old = (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch);
 
                 switch( sysevent.msg->subsystem ) {
 #if defined(_WIN32)
@@ -150,6 +174,7 @@ sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
                                              sysevent.msg->msg.win.wParam);
 
                 } break;
+#elif defined(ANDROID)
 #elif defined(__linux__)
                 case SDL_SYSWM_X11:{
                     er = EasyTab_HandleEvent(&sysevent.msg->msg.x11.event);
@@ -163,46 +188,6 @@ sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
                 default:
                     break;  // Are we in Wayland yet?
 
-                }
-
-                if ( er == EASYTAB_OK ) {
-                    i32 bit_touch = (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch);
-                    i32 bit_lower = (EasyTab->Buttons & EasyTab_Buttons_Pen_Lower);
-                    i32 bit_upper = (EasyTab->Buttons & EasyTab_Buttons_Pen_Upper);
-
-                    // Pen in use but not drawing
-                    b32 taking_pen_input = EasyTab->PenInProximity
-                                           && bit_touch
-                                           && !( bit_upper || bit_lower );
-
-                    if ( taking_pen_input ) {
-                        platform_state->is_pointer_down = true;
-
-                        for ( int pi = 0; pi < EasyTab->NumPackets; ++pi ) {
-                            v2i point = { EasyTab->PosX[pi], EasyTab->PosY[pi] };
-                            if ( point.x >= 0 && point.y >= 0 ) {
-                                if ( platform_state->num_point_results < MAX_INPUT_BUFFER_ELEMS ) {
-                                    milton_input.points[platform_state->num_point_results++] = point;
-                                }
-                                if ( platform_state->num_pressure_results < MAX_INPUT_BUFFER_ELEMS ) {
-                                    milton_input.pressures[platform_state->num_pressure_results++] = EasyTab->Pressure[pi];
-                                }
-                            }
-                        }
-                    }
-
-                    if ( !bit_touch && bit_touch_old ) {
-                        pointer_up = true;  // Wacom does not seem to send button-up messages after
-                                            // using stylus buttons while stroking.
-                    }
-
-
-                    if ( EasyTab->NumPackets > 0 ) {
-                        v2i point = { EasyTab->PosX[EasyTab->NumPackets-1], EasyTab->PosY[EasyTab->NumPackets-1] };
-                        input_flags |= MiltonInputFlags_HOVERING;
-
-                        platform_state->pointer = point;
-                    }
                 }
             } break;
         case SDL_MOUSEBUTTONDOWN: {
@@ -447,6 +432,11 @@ sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
                     break;
                 case SDL_WINDOWEVENT_RESIZED:
                 case SDL_WINDOWEVENT_SIZE_CHANGED:
+#if defined(ANDROID)
+                    /* Window resize in android kills the gl context, which is
+                       *exactly* what you want... */
+                    restart_gl(milton_state, SDL_GetWindowFromID(event.window.windowID));
+#endif
                     platform_state->width = event.window.data1;
                     platform_state->height = event.window.data2;
                     input_flags |= MiltonInputFlags_FULL_REFRESH;
@@ -470,9 +460,57 @@ sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
                     break;
                 }
             } break;
+#if defined(ANDROID)
+        case SDL_FINGERDOWN:
+        case SDL_FINGERUP:
+        case SDL_FINGERMOTION: {
+            er = EasyTab_HandleEvent(&event.tfinger);
+        } break;
+#endif
         default:
             break;
         }
+
+        if ( er == EASYTAB_OK ) {
+            i32 bit_touch = (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch);
+            i32 bit_lower = (EasyTab->Buttons & EasyTab_Buttons_Pen_Lower);
+            i32 bit_upper = (EasyTab->Buttons & EasyTab_Buttons_Pen_Upper);
+
+            // Pen in use but not drawing
+            b32 taking_pen_input = EasyTab->PenInProximity
+                                   && bit_touch
+                                   && !( bit_upper || bit_lower );
+
+            if ( taking_pen_input ) {
+                platform_state->is_pointer_down = true;
+
+                for ( int pi = 0; pi < EasyTab->NumPackets; ++pi ) {
+                    v2i point = { EasyTab->PosX[pi], EasyTab->PosY[pi] };
+                    if ( point.x >= 0 && point.y >= 0 ) {
+                        if ( platform_state->num_point_results < MAX_INPUT_BUFFER_ELEMS ) {
+                            milton_input.points[platform_state->num_point_results++] = point;
+                        }
+                        if ( platform_state->num_pressure_results < MAX_INPUT_BUFFER_ELEMS ) {
+                            milton_input.pressures[platform_state->num_pressure_results++] = EasyTab->Pressure[pi];
+                        }
+                    }
+                }
+            }
+
+            if ( !bit_touch && bit_touch_old ) {
+                pointer_up = true;  // Wacom does not seem to send button-up messages after
+                                    // using stylus buttons while stroking.
+            }
+
+
+            if ( EasyTab->NumPackets > 0 ) {
+                v2i point = { EasyTab->PosX[EasyTab->NumPackets-1], EasyTab->PosY[EasyTab->NumPackets-1] };
+                input_flags |= MiltonInputFlags_HOVERING;
+
+                platform_state->pointer = point;
+            }
+        }
+
 #if defined(_MSC_VER)
 #pragma warning (pop)
 #endif
@@ -536,7 +574,11 @@ milton_main()
 
     platform_state.keyboard_layout = get_current_keyboard_layout();
 
-#if USE_GL_3_2
+#if defined(ANDROID)
+    // ES 3.1
+    i32 gl_version_major = 3;
+    i32 gl_version_minor = 0;
+#elif USE_GL_3_2
     i32 gl_version_major = 3;
     i32 gl_version_minor = 2;
 #else
@@ -552,7 +594,9 @@ milton_main()
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, gl_version_major);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, gl_version_minor);
     // SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, false);
-    #if USE_GL_3_2
+    #if defined(ANDROID)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    #elif USE_GL_3_2
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     #endif
 
@@ -566,12 +610,16 @@ milton_main()
                               platform_state.width, platform_state.height,
                               SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 
+    milton_log("window = %p\n", window);
+
     if ( !window ) {
         milton_log("SDL Error: %s\n", SDL_GetError());
         milton_die_gracefully("SDL could not create window\n");
     }
 
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
+
+    milton_log("gl_context = %p\n", gl_context);
 
     if ( !gl_context ) {
         milton_die_gracefully("Could not create OpenGL context\n");
@@ -583,6 +631,8 @@ milton_main()
     int actual_minor = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &actual_major);
     glGetIntegerv(GL_MINOR_VERSION, &actual_minor);
+    milton_log("GL version desired = %d.%d, actual = %d.%d\n",
+        gl_version_major, gl_version_minor, actual_major, actual_minor);
     if ( !(actual_major == 0 && actual_minor == 0)
          && (actual_major < gl_version_major
              || (actual_major == gl_version_major && actual_minor < gl_version_minor)) ) {
@@ -646,6 +696,7 @@ milton_main()
                 EasyTab_Load(platform_state.hwnd);
                 break;
             }
+#elif defined(ANDROID)
 #elif defined(__linux__)
         case SDL_SYSWM_X11:
             EasyTab_Load(sysinfo.info.x11.display, sysinfo.info.x11.window);
@@ -656,7 +707,11 @@ milton_main()
         }
     }
     else {
+#if defined(ANDROID)
+        EasyTab_Load(window);
+#else
         milton_die_gracefully("Can't get system info!\n");
+#endif
     }
 #if defined(_MSC_VER)
 #pragma warning (pop)
@@ -1015,7 +1070,8 @@ milton_main()
         glFinish();
         SDL_GL_SwapWindow(window);
 
-#ifdef __linux__
+#if defined(ANDROID)
+#elif defined(__linux__)
         gtk_main_iteration_do(FALSE);
 #endif
         // Sleep if the frame took less time than the refresh rate.

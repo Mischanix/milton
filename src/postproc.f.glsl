@@ -24,15 +24,15 @@ void
 main()
 {
     // Pixel width / height.
-    float pw = 1 / u_screen_size.x;
-    float ph = 1 / u_screen_size.y;
+    float pw = 1.0 / u_screen_size.x;
+    float ph = 1.0 / u_screen_size.y;
     vec2 coord = gl_FragCoord.xy / u_screen_size;
 
 
     // TODO: When exporting to a transparent background, FXAA will blend-in the background color.
     //      Find a fix
 
-    out_color = texture(u_canvas, coord, 0);
+    out_color = texture(u_canvas, coord, 0.0);
 
     out_color.rgb = FxaaPixelShader(
         // Use noperspective interpolation here (turn off perspective interpolation).
@@ -43,7 +43,7 @@ main()
         // Use noperspective interpolation here (turn off perspective interpolation).
         // {xy__} = upper left of pixel
         // {__zw} = lower right of pixel
-        vec4(0), // FxaaFloat4 fxaaConsolePosPos,
+        vec4(0.0), // FxaaFloat4 fxaaConsolePosPos,
         //
         // Input color texture.
         // {rgb_} = color in linear or perceptual color space
@@ -67,7 +67,7 @@ main()
         // This must be from a constant/uniform.
         // {x_} = 1.0/screenWidthInPixels
         // {_y} = 1.0/screenHeightInPixels
-        1/u_screen_size, //FxaaFloat2 fxaaQualityRcpFrame,
+        1.0/u_screen_size, //FxaaFloat2 fxaaQualityRcpFrame,
         //
         // Only used on FXAA Console.
         // This must be from a constant/uniform.
@@ -79,7 +79,7 @@ main()
         // {_y__} = -N/screenHeightInPixels
         // {__z_} =  N/screenWidthInPixels
         // {___w} =  N/screenHeightInPixels
-        vec4(0), // FxaaFloat4 fxaaConsoleRcpFrameOpt,
+        vec4(0.0), // FxaaFloat4 fxaaConsoleRcpFrameOpt,
         //
         // Only used on FXAA Console.
         // Not used on 360, but used on PS3 and PC.
@@ -88,7 +88,7 @@ main()
         // {_y__} = -2.0/screenHeightInPixels
         // {__z_} =  2.0/screenWidthInPixels
         // {___w} =  2.0/screenHeightInPixels
-        vec4(0), //FxaaFloat4 fxaaConsoleRcpFrameOpt2,
+        vec4(0.0), //FxaaFloat4 fxaaConsoleRcpFrameOpt2,
         //
         // Only used on FXAA Console.
         // Only used on 360 in place of fxaaConsoleRcpFrameOpt2.
@@ -97,7 +97,7 @@ main()
         // {_y__} =  8.0/screenHeightInPixels
         // {__z_} = -4.0/screenWidthInPixels
         // {___w} = -4.0/screenHeightInPixels
-        vec4(0), // FxaaFloat4 fxaaConsole360RcpFrameOpt2,
+        vec4(0.0), // FxaaFloat4 fxaaConsole360RcpFrameOpt2,
         //
         // Only used on FXAA Quality.
         // This used to be the FXAA_QUALITY__SUBPIX define.
@@ -189,6 +189,6 @@ main()
         // These must be in physical constant registers and NOT immedates.
         // Immedates will result in compiler un-optimizing.
         // {xyzw} = float4(1.0, -1.0, 0.25, -0.25)
-        vec4(0) // FxaaFloat4 fxaaConsole360ConstDir
+        vec4(0.0) // FxaaFloat4 fxaaConsole360ConstDir
     ).rgb;
 }

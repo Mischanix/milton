@@ -117,6 +117,14 @@ DEBUG_gl_validate_buffer(GLuint buffer)
     mlt_assert(DEBUG_g_buffers[buffer]);
 }
 
+#if defined(ANDROID)
+#define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER
+#define glCheckFramebufferStatusEXT glCheckFramebufferStatus
+#define glBindFramebufferEXT glBindFramebuffer
+#define glFramebufferTexture2DEXT glFramebufferTexture2D
+#define glClearDepth glClearDepthf
+#endif
+
 static void
 print_framebuffer_status()
 {
@@ -135,6 +143,7 @@ print_framebuffer_status()
             msg = "Missing Attachment";
             break;
         }
+#if !defined(ANDROID)
         case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER: {
             msg = "Incomplete Draw Buffer";
             break;
@@ -143,6 +152,7 @@ print_framebuffer_status()
             msg = "Incomplete Read Buffer";
             break;
         }
+#endif
         case GL_FRAMEBUFFER_UNSUPPORTED: {
             msg = "Unsupported Framebuffer";
             break;
@@ -167,7 +177,7 @@ print_framebuffer_status()
 RenderData*
 gpu_allocate_render_data(Arena* arena)
 {
-    RenderData* p = arena_alloc_elem(arena, RenderData);
+    RenderData* p = (RenderData *)calloc(1, sizeof(RenderData));
     return p;
 }
 
@@ -313,6 +323,7 @@ gpu_init(RenderData* render_data, CanvasView* view, ColorPicker* picker, i32 ren
 {
     render_data->stroke_z = MAX_DEPTH_VALUE - 20;
 
+#if !defined(ANDROID)
     if ( gl_helper_check_flags(GLHelperFlags_TEXTURE_MULTISAMPLE) ) {
         glEnable(GL_MULTISAMPLE);
         if ( gl_helper_check_flags(GLHelperFlags_SAMPLE_SHADING) ) {
@@ -320,6 +331,7 @@ gpu_init(RenderData* render_data, CanvasView* view, ColorPicker* picker, i32 ren
             GLCHK( glMinSampleShadingARB(1.0f) );
         }
     }
+#endif
 
     {
         GLfloat viewport_dims[2] = {};
@@ -541,6 +553,7 @@ gpu_init(RenderData* render_data, CanvasView* view, ColorPicker* picker, i32 ren
             texture_target = GL_TEXTURE_2D;
         }
         render_data->fbo = gl_new_fbo(render_data->canvas_texture, render_data->stencil_texture, texture_target);
+
         GLCHK( glBindFramebufferEXT(GL_FRAMEBUFFER, render_data->fbo) );
         print_framebuffer_status();
         GLCHK( glBindFramebufferEXT(GL_FRAMEBUFFER, 0) );
@@ -1133,6 +1146,7 @@ gpu_render_canvas(RenderData* render_data, i32 view_x, i32 view_y,
     i32 w = view_width;
     i32 h = view_height;
     glScissor(x, y, w, h);
+
     glClearDepth(0.0f);
 
     GLCHK(glBindFramebufferEXT(GL_FRAMEBUFFER, render_data->fbo));

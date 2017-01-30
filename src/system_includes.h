@@ -43,6 +43,11 @@
 
 #include "SDL_opengl.h"
 
+#elif defined(ANDROID)
+
+#define GL_GLEXT_PROTOTYPES
+#include <GLES3/gl31.h>
+
 #elif defined(__linux__)
 
 #define GL_GLEXT_PROTOTYPES

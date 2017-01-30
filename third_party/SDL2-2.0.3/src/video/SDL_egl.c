@@ -65,6 +65,38 @@ if (!_this->egl_data->NAME) \
 }
     
 /* EGL implementation of SDL OpenGL ES support */
+#ifdef EGL_KHR_create_context        
+static int SDL_EGL_HasExtension(_THIS, const char *ext)
+{
+    int i;
+    int len = 0;
+    int ext_len;
+    const char *exts;
+    const char *ext_word;
+
+    ext_len = SDL_strlen(ext);
+    exts = _this->egl_data->eglQueryString(_this->egl_data->egl_display, EGL_EXTENSIONS);
+
+    if (exts) {
+        ext_word = exts;
+
+        for (i = 0; exts[i] != 0; i++) {
+            if (exts[i] == ' ') {
+                if (ext_len == len && !SDL_strncmp(ext_word, ext, len)) {
+                    return 1;
+                }
+
+                len = 0;
+                ext_word = &exts[i + 1];
+            } else {
+                len++;
+            }
+        }
+    }
+
+    return 0;
+}
+#endif /* EGL_KHR_create_context */
 
 void *
 SDL_EGL_GetProcAddress(_THIS, const char *proc)
@@ -215,6 +247,7 @@ SDL_EGL_LoadLibrary(_THIS, const char *egl_path, NativeDisplayType native_displa
     LOAD_FUNC(eglWaitNative);
     LOAD_FUNC(eglWaitGL);
     LOAD_FUNC(eglBindAPI);
+    LOAD_FUNC(eglQueryString);
     
     _this->egl_data->egl_display = _this->egl_data->eglGetDisplay(native_display);
     if (!_this->egl_data->egl_display) {
@@ -291,21 +324,27 @@ SDL_EGL_ChooseConfig(_THIS)
     }
     
     attribs[i++] = EGL_RENDERABLE_TYPE;
-    if(_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
-        if (_this->gl_config.major_version == 2) {
+    if (_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
+#ifdef EGL_KHR_create_context
+        if (_this->gl_config.major_version >= 3 &&
+            SDL_EGL_HasExtension(_this, "EGL_KHR_create_context")) {
+            attribs[i++] = EGL_OPENGL_ES3_BIT_KHR;
+        } else
+#endif
+        if (_this->gl_config.major_version >= 2) {
             attribs[i++] = EGL_OPENGL_ES2_BIT;
         } else {
             attribs[i++] = EGL_OPENGL_ES_BIT;
         }
         _this->egl_data->eglBindAPI(EGL_OPENGL_ES_API);
-    }
-    else {
+    } else {
         attribs[i++] = EGL_OPENGL_BIT;
         _this->egl_data->eglBindAPI(EGL_OPENGL_API);
     }
     
     attribs[i++] = EGL_NONE;
    
+    __android_log_print(ANDROID_LOG_INFO,"SDL_egl","calling eglChooseConfig(%p)\n", _this->egl_data->eglChooseConfig);
     if (_this->egl_data->eglChooseConfig(_this->egl_data->egl_display,
         attribs,
         configs, SDL_arraysize(configs),
@@ -317,7 +356,7 @@ SDL_EGL_ChooseConfig(_THIS)
     /* eglChooseConfig returns a number of configurations that match or exceed the requested attribs. */
     /* From those, we select the one that matches our requirements more closely via a makeshift algorithm */
 
-    for ( i=0; i<found_configs; i++ ) {
+    for (i = 0; i < found_configs; i++ ) {
         bitdiff = 0;
         for (j = 0; j < SDL_arraysize(attribs) - 1; j += 2) {
             if (attribs[j] == EGL_NONE) {
@@ -341,8 +380,10 @@ SDL_EGL_ChooseConfig(_THIS)
             
             best_bitdiff = bitdiff;
         }
-           
-        if (bitdiff == 0) break; /* we found an exact match! */
+
+        if (bitdiff == 0) {
+            break; /* we found an exact match! */
+        }
     }
     
     return 0;
@@ -351,54 +392,86 @@ SDL_EGL_ChooseConfig(_THIS)
 SDL_GLContext
 SDL_EGL_CreateContext(_THIS, EGLSurface egl_surface)
 {
-    EGLint context_attrib_list[] = {
-        EGL_CONTEXT_CLIENT_VERSION,
-        1,
-        EGL_NONE
-    };
-    
+    /* max 14 values plus terminator. */
+    EGLint attribs[15];
+    int attr = 0;
+
     EGLContext egl_context, share_context = EGL_NO_CONTEXT;
-    
+    EGLint profile_mask = _this->gl_config.profile_mask;
+
     if (!_this->egl_data) {
         /* The EGL library wasn't loaded, SDL_GetError() should have info */
         return NULL;
     }
-    
+
     if (_this->gl_config.share_with_current_context) {
         share_context = (EGLContext)SDL_GL_GetCurrentContext();
     }
-    
-    /* Bind the API */
-    if(_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
-        _this->egl_data->eglBindAPI(EGL_OPENGL_ES_API);
-        if (_this->gl_config.major_version) {
-            context_attrib_list[1] = _this->gl_config.major_version;
-        }
 
-        egl_context = _this->egl_data->eglCreateContext(_this->egl_data->egl_display,
-                                          _this->egl_data->egl_config,
-                                          share_context, context_attrib_list);
+    /* Set the context version and other attributes. */
+    if (_this->gl_config.major_version < 3 && _this->gl_config.flags == 0 &&
+        (profile_mask == 0 || profile_mask == SDL_GL_CONTEXT_PROFILE_ES)) {
+        /* Create a context without using EGL_KHR_create_context attribs. */
+        if (profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
+            attribs[attr++] = EGL_CONTEXT_CLIENT_VERSION;
+            attribs[attr++] = SDL_max(_this->gl_config.major_version, 1);
+        }
+    } else {
+#ifdef EGL_KHR_create_context
+        /* The Major/minor version, context profiles, and context flags can
+         * only be specified when this extension is available.
+         */
+        if (SDL_EGL_HasExtension(_this, "EGL_KHR_create_context")) {
+            attribs[attr++] = EGL_CONTEXT_MAJOR_VERSION_KHR;
+            attribs[attr++] = _this->gl_config.major_version;
+            attribs[attr++] = EGL_CONTEXT_MINOR_VERSION_KHR;
+            attribs[attr++] = _this->gl_config.minor_version;
+
+            /* SDL profile bits match EGL profile bits. */
+            if (profile_mask != 0 && profile_mask != SDL_GL_CONTEXT_PROFILE_ES) {
+                attribs[attr++] = EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR;
+                attribs[attr++] = profile_mask;
+            }
+
+            /* SDL flags match EGL flags. */
+            if (_this->gl_config.flags != 0) {
+                attribs[attr++] = EGL_CONTEXT_FLAGS_KHR;
+                attribs[attr++] = _this->gl_config.flags;
+            }
+        } else
+#endif /* EGL_KHR_create_context */
+        {
+            SDL_SetError("Could not create EGL context (context attributes are not supported)");
+            return NULL;
+        }
     }
-    else {
+
+    attribs[attr++] = EGL_NONE;
+
+    /* Bind the API */
+    if (_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
+        _this->egl_data->eglBindAPI(EGL_OPENGL_ES_API);
+    } else {
         _this->egl_data->eglBindAPI(EGL_OPENGL_API);
-        egl_context = _this->egl_data->eglCreateContext(_this->egl_data->egl_display,
-                                          _this->egl_data->egl_config,
-                                          share_context, NULL);
     }
-    
+
+    egl_context = _this->egl_data->eglCreateContext(_this->egl_data->egl_display,
+                                      _this->egl_data->egl_config,
+                                      share_context, attribs);
+
     if (egl_context == EGL_NO_CONTEXT) {
         SDL_SetError("Could not create EGL context");
         return NULL;
     }
-    
+
     _this->egl_data->egl_swapinterval = 0;
-    
+
     if (SDL_EGL_MakeCurrent(_this, egl_surface, egl_context) < 0) {
         SDL_EGL_DeleteContext(_this, egl_context);
         SDL_SetError("Could not make EGL context current");
         return NULL;
     }
-  
+
     return (SDL_GLContext) egl_context;
 }
 

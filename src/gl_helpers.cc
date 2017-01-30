@@ -154,6 +154,8 @@ gl_log(char* str)
 {
 #ifdef _WIN32
     OutputDebugStringA(str);
+#elif defined(ANDROID)
+    milton_log("GL -- %s", str);
 #else
     fprintf(stderr, "%s", str);
 #endif
@@ -163,7 +165,12 @@ GLuint
 gl_compile_shader(const char* in_src, GLuint type, char* config)
 {
     const char* sources[] = {
-        #if USE_GL_3_2
+        #if defined(ANDROID)
+            "#version 300 es\n",
+            "#define NO_EXTENSIONS 1\n",
+            "precision highp float;\n",
+            (type == GL_FRAGMENT_SHADER) ? "out vec4 out_color; \n" : "\n",
+        #elif USE_GL_3_2
             "#version 330 \n",
             (type == GL_FRAGMENT_SHADER) ? "out vec4 out_color; \n" : "\n",
         #else
@@ -192,7 +199,7 @@ gl_compile_shader(const char* in_src, GLuint type, char* config)
     GLCHK ( glGetShaderiv(obj, GL_INFO_LOG_LENGTH, &length) );
     if ( !res && length > 0 ) {
         if ( !res ) {
-            milton_log("SHADER SOURCE:\n%s\n", sources[2]);
+            milton_log("SHADER SOURCE:\n%s\n", in_src);
         }
         char* log = (char*)mlt_calloc(1, (size_t)length, "Strings");
         GLsizei written_len;
@@ -493,6 +500,20 @@ GLuint
 gl_new_fbo(GLuint color_attachment, GLuint depth_stencil_attachment, GLenum texture_target)
 {
     GLuint fbo = 0;
+#if defined(ANDROID)
+    GLCHK(glGenFramebuffers(1, &fbo));
+    GLCHK(glBindFramebuffer(GL_FRAMEBUFFER, fbo));
+
+
+    GLCHK( glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture_target,
+                                     color_attachment, 0) );
+    if ( depth_stencil_attachment ) {
+        GLCHK( glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, texture_target,
+                                         depth_stencil_attachment, 0) );
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#else
     GLCHK(glGenFramebuffersEXT(1, &fbo));
     GLCHK(glBindFramebufferEXT(GL_FRAMEBUFFER, fbo));
 
@@ -505,8 +526,15 @@ gl_new_fbo(GLuint color_attachment, GLuint depth_stencil_attachment, GLenum text
     }
 
     glBindFramebufferEXT(GL_FRAMEBUFFER, 0);
+#endif
     return fbo;
 }
+
+#if defined(ANDROID)
+#define TexImage2DMultisample glTexStorage2DMultisample
+#else
+#define TexImage2DMultisample glTexImage2DMultisample
+#endif
 
 
 GLuint
@@ -516,10 +544,10 @@ gl_new_color_texture_multisample(int w, int h)
     glGenTextures(1, &t);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, t);
 
-    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, MSAA_NUM_SAMPLES,
-                            GL_RGBA,
-                            w,h,
-                            GL_TRUE);
+    TexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, MSAA_NUM_SAMPLES,
+                          GL_RGBA,
+                          w,h,
+                          GL_TRUE);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
 
     return t;
@@ -532,10 +560,10 @@ gl_new_depth_stencil_texture_multisample(int w, int h)
     glGenTextures(1, &t);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, t);
 
-    GLCHK( glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, MSAA_NUM_SAMPLES,
-                                   /*internalFormat, num of components*/GL_DEPTH24_STENCIL8,
-                                   w,h,
-                                   GL_TRUE) );
+    GLCHK( TexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, MSAA_NUM_SAMPLES,
+                                 /*internalFormat, num of components*/GL_DEPTH24_STENCIL8,
+                                 w,h,
+                                 GL_TRUE) );
 
 
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
@@ -559,10 +587,10 @@ void
 gl_resize_color_texture_multisample(GLuint t, int w, int h)
 {
     GLCHK (glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, t));
-    GLCHK (glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, MSAA_NUM_SAMPLES,
-                                   GL_RGBA,
-                                   w,h,
-                                   GL_TRUE));
+    GLCHK (TexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, MSAA_NUM_SAMPLES,
+                                 GL_RGBA,
+                                 w,h,
+                                 GL_TRUE));
 }
 
 void
@@ -580,10 +608,10 @@ void
 gl_resize_depth_stencil_texture_multisample(GLuint t, int w, int h)
 {
     GLCHK (glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, t));
-    GLCHK (glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, MSAA_NUM_SAMPLES,
-                                   GL_DEPTH24_STENCIL8,
-                                   w,h,
-                                   GL_TRUE) );
+    GLCHK (TexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, MSAA_NUM_SAMPLES,
+                                 GL_DEPTH24_STENCIL8,
+                                 w,h,
+                                 GL_TRUE) );
 
 }
 

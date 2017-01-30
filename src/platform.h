@@ -176,6 +176,9 @@ float perf_count_to_sec(u64 counter);
 #define platform_milton_log win32_log
 void win32_log(char *format, ...);
 #define getpid _getpid
+#elif defined(ANDROID)
+int milton_log_adb(const char *format, ...);
+#define platform_milton_log milton_log_adb
 #elif defined(__linux__) || defined(__MACH__)
 #define platform_milton_log printf
 #endif
@@ -183,6 +186,8 @@ void win32_log(char *format, ...);
 
 #if defined(_WIN32)
 #include "platform_windows.h"
+#elif defined(ANDROID)
+#include "platform_android.h"
 #elif defined(__linux__) || defined(__MACH__)
 #include "platform_unix.h"
 #endif

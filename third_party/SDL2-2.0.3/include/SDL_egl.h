@@ -27,6 +27,10 @@
 #ifndef _MSC_VER
 
 #include <EGL/egl.h>
+#if defined(ANDROID)
+#include <EGL/eglext.h>
+#include <android/log.h>
+#endif
 
 #else /* _MSC_VER */
 

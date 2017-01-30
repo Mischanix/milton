@@ -62,6 +62,8 @@ typedef i32         b32;
                                 } } while(0)
     #elif defined(__MACH__)
     #define mlt_assert(expr)  do { if (!(bool)(expr)) {  __builtin_trap();  } } while(0)
+    #elif defined(ANDROID)
+    #define mlt_assert(expr)  do { if (!(bool)(expr)) {  __builtin_trap();  } } while(0)
     #else
     #define mlt_assert(expr)  do { if (!(bool)(expr)) {  (*(u32*)0) = 0xDeAdBeEf;  } } while(0)
     #endif
