@@ -272,15 +272,15 @@ gpu_update_brush_outline(RenderData* render_data, i32 cx, i32 cy, i32 radius,
 
     float radius_plus_girth = radius + 4.0f; // Girth defined in outline.f.glsl
 
-    auto w = render_data->width;
-    auto h = render_data->height;
+    float w = (float)render_data->width;
+    float h = (float)render_data->height;
 
     // Normalized to [-1,1]
     GLfloat data[] = {
-        2*((cx-radius_plus_girth) / w)-1,  -2*((cy-radius_plus_girth) / h)+1,
-        2*((cx-radius_plus_girth) / w)-1,  -2*((cy+radius_plus_girth) / h)+1,
-        2*((cx+radius_plus_girth) / w)-1,  -2*((cy+radius_plus_girth) / h)+1,
-        2*((cx+radius_plus_girth) / w)-1,  -2*((cy-radius_plus_girth) / h)+1,
+        2.0f*((cx-radius_plus_girth) / w)-1.0f,  -2.0f*((cy-radius_plus_girth) / h)+1.0f,
+        2.0f*((cx-radius_plus_girth) / w)-1.0f,  -2.0f*((cy+radius_plus_girth) / h)+1.0f,
+        2.0f*((cx+radius_plus_girth) / w)-1.0f,  -2.0f*((cy+radius_plus_girth) / h)+1.0f,
+        2.0f*((cx+radius_plus_girth) / w)-1.0f,  -2.0f*((cy-radius_plus_girth) / h)+1.0f,
     };
 
     GLfloat sizes[] = {
@@ -1434,6 +1434,7 @@ gpu_render(RenderData* render_data,  i32 view_x, i32 view_y, i32 view_width, i32
                 glEnableVertexAttribArray((GLuint)loc_s);
             }
         }
+        
         glDrawArrays(GL_TRIANGLE_FAN, 0,4);
     }
     glDisable(GL_BLEND);

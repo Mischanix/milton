@@ -148,6 +148,9 @@ struct MiltonState
     Arena       root_arena;     // Lives forever
     Arena       canvas_arena;   // Gets reset every canvas.
 
+    b32 draw_custom_rectangle;  // Custom rectangle used for new strokes, undo/redo.
+    Rect custom_rectangle;
+
     // Software Rendering stuff
 #if SOFTWARE_RENDERER_COMPILED
     i32             num_render_workers;

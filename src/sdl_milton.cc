@@ -92,6 +92,8 @@ panning_update(PlatformState* platform_state)
     }
 }
 
+static bool faked_mouse_down = false;
+
 MiltonInput
 sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
 {
@@ -139,6 +141,7 @@ sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
                 if (!EasyTab) { break; }
 
                 i32 bit_touch_old = (EasyTab->Buttons & EasyTab_Buttons_Pen_Touch);
+                b32 in_prox_old = EasyTab->PenInProximity;
 
                 switch( sysevent.msg->subsystem ) {
 #if defined(_WIN32)
@@ -194,6 +197,19 @@ sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
                     if ( !bit_touch && bit_touch_old ) {
                         pointer_up = true;  // Wacom does not seem to send button-up messages after
                                             // using stylus buttons while stroking.
+                    }
+
+                    if ( !faked_mouse_down && ImGui::GetIO().WantCaptureMouse && !in_prox_old && EasyTab->PenInProximity ) {
+                        SDL_Event fake_mouse_event;
+                        fake_mouse_event.type = SDL_MOUSEBUTTONDOWN;
+                        fake_mouse_event.button.windowID = platform_state->window_id;
+                        fake_mouse_event.button.button = SDL_BUTTON_LEFT;
+                        v2i &point = milton_input.points[platform_state->num_point_results - 1];
+                        fake_mouse_event.button.x = point.x;
+                        fake_mouse_event.button.y = point.y;
+                        fake_mouse_event.button.clicks = 1;
+                        SDL_PushEvent(&fake_mouse_event);
+                        faked_mouse_down = true;
                     }
 
 
@@ -480,6 +496,29 @@ sdl_event_loop(MiltonState* milton_state, PlatformState* platform_state)
             break;
         }
     }  // ---- End of SDL event loop
+
+    // Touchscreen hack:
+    if (EasyTab && EasyTab->PenInProximity && EasyTab->LastEventTick) {
+        uint64_t tick = SDL_GetPerformanceCounter();
+        // Clear proximity after 20ms
+        if (50 * (tick - EasyTab->LastEventTick) > SDL_GetPerformanceFrequency()) {
+            EasyTab->PenInProximity = 0;
+            pointer_up = true;
+            input_flags |= MiltonInputFlags_CLICKUP;
+            input_flags |= MiltonInputFlags_END_STROKE;
+            if (faked_mouse_down) {
+                SDL_Event fake_mouse_event;
+                fake_mouse_event.type = SDL_MOUSEBUTTONUP;
+                fake_mouse_event.button.windowID = platform_state->window_id;
+                fake_mouse_event.button.button = SDL_BUTTON_LEFT;
+                fake_mouse_event.button.x = EasyTab->PosX[0];
+                fake_mouse_event.button.y = EasyTab->PosY[0];
+                fake_mouse_event.button.clicks = 1;
+                SDL_PushEvent(&fake_mouse_event);
+                faked_mouse_down = false;
+            }
+        }
+    }
 
     if ( pointer_up ) {
         // Add final point

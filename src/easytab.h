@@ -625,6 +625,8 @@ typedef struct
     EasyTab_Orientation Orientation;
 
 #ifdef __linux__
+    int32_t  LastPressure;
+    uint64_t LastEventTick;
     XDevice* Device;
     uint32_t MotionType;
     uint32_t ProximityTypeIn;
@@ -734,9 +736,12 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
 
     for (int32_t i = 0; i < Count; i++)
     {
+        printf("EasyTab_Load: device.name=%s\n", Devices[i].name);
         if (!strstr(Devices[i].name, "stylus") &&
-            !strstr(Devices[i].name, "eraser")) { continue; }
+            !strstr(Devices[i].name, "eraser") &&
+            !strstr(Devices[i].name, "Touchscreen")) { continue; }
 
+        printf("EasyTab_Load: ^ Using this device.\n");
         EasyTab->Device = XOpenDevice(Disp, Devices[i].id);
         XAnyClassPtr ClassPtr = Devices[i].inputclassinfo;
 
@@ -756,7 +761,7 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
                     {
                         int32_t min     = Info->axes[0].min_value;
                         EasyTab->RangeX = Info->axes[0].max_value;
-                        //printf("Max/min x values: %d, %d\n", min, EasyTab->RangeX); // TODO: Platform-print macro
+                        printf("Max/min x values: %d, %d\n", min, EasyTab->RangeX); // TODO: Platform-print macro
                     }
 
                     // Y
@@ -764,7 +769,7 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
                     {
                         int32_t min     = Info->axes[1].min_value;
                         EasyTab->RangeY = Info->axes[1].max_value;
-                        //printf("Max/min y values: %d, %d\n", min, EasyTab->RangeY);
+                        printf("Max/min y values: %d, %d\n", min, EasyTab->RangeY);
                     }
 
                     // Pressure
@@ -772,7 +777,7 @@ EasyTabResult EasyTab_Load(Display* Disp, Window Win)
                     {
                         int32_t min          = Info->axes[2].min_value;
                         EasyTab->MaxPressure = Info->axes[2].max_value;
-                        //printf("Max/min pressure values: %d, %d\n", min, EasyTab->MaxPressure);
+                        printf("Max/min pressure values: %d, %d\n", min, EasyTab->MaxPressure);
                     }
 
                     XEventClass EventClassMotion;
@@ -821,20 +826,35 @@ EasyTabResult EasyTab_HandleEvent(XEvent* Event)
     if (Event->type == EasyTab->MotionType)
     {
         XDeviceMotionEvent* MotionEvent = (XDeviceMotionEvent*)(Event);
-        EasyTab->PosX[0]     = MotionEvent->x;
-        EasyTab->PosY[0]     = MotionEvent->y;
-        EasyTab->Pressure[0] = (float)MotionEvent->axis_data[2] / (float)EasyTab->MaxPressure;
+        int32_t pressure = MotionEvent->axis_data[2];
+        // Pressure applies to the next event, not the current
+        // Also, drop events with zero pressure and let the timeout handle it.
+        uint64_t tick = SDL_GetPerformanceCounter();
+        if (EasyTab->LastPressure || (50 * (tick - EasyTab->LastEventTick) < SDL_GetPerformanceFrequency())) {
+            EasyTab->PosX[0]     = MotionEvent->x;
+            EasyTab->PosY[0]     = MotionEvent->y;
+            // printf("MotionEvent{x=%d y=%d pressure=%d}\n", MotionEvent->x, MotionEvent->y, pressure);
+            if (!EasyTab->LastPressure) {
+                EasyTab->LastPressure = pressure;
+            }
+            if (EasyTab->LastPressure) {
+                EasyTab->Pressure[0] = (float)EasyTab->LastPressure / (float)EasyTab->MaxPressure;
+            }
+            EasyTab->PenInProximity = EASYTAB_TRUE;
+            EasyTab->LastEventTick = tick;
 
-        if (EasyTab->Pressure[0] > 0.0f)
-        {
-            EasyTab->Buttons |= EasyTab_Buttons_Pen_Touch;
-        }
-        else
-        {
-            EasyTab->Buttons &= ~EasyTab_Buttons_Pen_Touch;
-        }
+            if (EasyTab->Pressure[0] > 0.0f)
+            {
+                EasyTab->Buttons |= (EasyTab_Buttons_Pen_Touch);
+            }
+            else
+            {
+                EasyTab->Buttons &= ~(EasyTab_Buttons_Pen_Touch);
+            }
 
-        EasyTab->NumPackets = 1;
+            EasyTab->NumPackets = 1;
+        }
+        EasyTab->LastPressure = pressure;
     }
     else if (Event->type == EasyTab->ProximityTypeIn)
     {

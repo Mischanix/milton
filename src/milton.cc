@@ -675,8 +675,14 @@ milton_reset_canvas_and_set_default(MiltonState* milton_state)
 }
 
 void
+milton_end_stroke(MiltonState *milton_state);
+
+void
 milton_switch_mode(MiltonState* milton_state, MiltonMode mode)
 {
+    if ( is_user_drawing(milton_state) ) {
+        milton_end_stroke(milton_state);
+    }
     if ( mode != milton_state->current_mode ) {
         milton_state->last_mode = milton_state->current_mode;
         milton_state->current_mode = mode;
@@ -994,6 +1000,54 @@ copy_with_smooth_interpolation(Arena* arena, CanvasView* view, Stroke* in_stroke
 }
 
 void
+milton_end_stroke(MiltonState *milton_state)
+{
+    if ( milton_state->working_stroke.num_points <= 0 ) {
+        return;
+    }
+    // We used the selected color to draw something. Push.
+    if ( milton_state->current_mode == MiltonMode_PEN
+         && gui_mark_color_used(milton_state->gui) ) {
+        // Tell the renderer to update the picker
+        gpu_update_picker(milton_state->render_data, &milton_state->gui->picker);
+    }
+    // Copy current stroke.
+    Stroke new_stroke = {};
+    CanvasState* canvas = milton_state->canvas;
+    copy_with_smooth_interpolation(&canvas->arena, milton_state->view, &milton_state->working_stroke, &new_stroke);
+    {
+        new_stroke.brush = milton_state->working_stroke.brush;
+        new_stroke.layer_id = milton_state->view->working_layer_id;
+        new_stroke.bounding_rect = rect_union(bounding_box_for_stroke(&new_stroke),
+                                            bounding_box_for_stroke(&new_stroke));
+
+        new_stroke.id = milton_state->canvas->stroke_id_count++;
+
+        milton_state->draw_custom_rectangle = true;
+        Rect bounds = new_stroke.bounding_rect;
+        bounds.top_left = canvas_to_raster(milton_state->view, bounds.top_left);
+        bounds.bot_right = canvas_to_raster(milton_state->view, bounds.bot_right);
+        milton_state->custom_rectangle = rect_union(milton_state->custom_rectangle, bounds);
+    }
+
+    mlt_assert(new_stroke.num_points > 0);
+    mlt_assert(new_stroke.num_points <= STROKE_MAX_POINTS);
+    auto* stroke = layer_push_stroke(milton_state->canvas->working_layer, new_stroke);
+
+    // Invalidate working stroke render element
+
+    HistoryElement h = { HistoryElement_STROKE_ADD, milton_state->canvas->working_layer->id };
+    push(&milton_state->canvas->history, h);
+    // Clear working_stroke
+    {
+        milton_state->working_stroke.num_points = 0;
+        milton_state->working_stroke.render_element.count = 0;
+    }
+
+    clear_stroke_redo(milton_state);
+}
+
+void
 milton_update_and_render(MiltonState* milton_state, MiltonInput* input)
 {
     PROFILE_GRAPH_BEGIN(update);
@@ -1002,8 +1056,10 @@ milton_update_and_render(MiltonState* milton_state, MiltonInput* input)
     b32 brush_outline_should_draw = false;
     int render_flags = RenderDataFlags_NONE;
 
-    b32 draw_custom_rectangle = false;  // Custom rectangle used for new strokes, undo/redo.
-    Rect custom_rectangle = rect_without_size();
+    b32 &draw_custom_rectangle = milton_state->draw_custom_rectangle;
+    Rect &custom_rectangle = milton_state->custom_rectangle;
+    draw_custom_rectangle = false;  // Custom rectangle used for new strokes, undo/redo.
+    custom_rectangle = rect_without_size();
 
     b32 should_save =
             ((input->flags & MiltonInputFlags_OPEN_FILE)) ||
@@ -1341,48 +1397,7 @@ milton_update_and_render(MiltonState* milton_state, MiltonInput* input)
             gui_deactivate(milton_state->gui);
             brush_outline_should_draw = false;
         } else {
-            if ( milton_state->working_stroke.num_points > 0 ) {
-                // We used the selected color to draw something. Push.
-                if ( milton_state->current_mode == MiltonMode_PEN
-                     && gui_mark_color_used(milton_state->gui) ) {
-                    // Tell the renderer to update the picker
-                    gpu_update_picker(milton_state->render_data, &milton_state->gui->picker);
-                }
-                // Copy current stroke.
-                Stroke new_stroke = {};
-                CanvasState* canvas = milton_state->canvas;
-                copy_with_smooth_interpolation(&canvas->arena, milton_state->view, &milton_state->working_stroke, &new_stroke);
-                {
-                    new_stroke.brush = milton_state->working_stroke.brush;
-                    new_stroke.layer_id = milton_state->view->working_layer_id;
-                    new_stroke.bounding_rect = rect_union(bounding_box_for_stroke(&new_stroke),
-                                                        bounding_box_for_stroke(&new_stroke));
-
-                    new_stroke.id = milton_state->canvas->stroke_id_count++;
-
-                    draw_custom_rectangle = true;
-                    Rect bounds = new_stroke.bounding_rect;
-                    bounds.top_left = canvas_to_raster(milton_state->view, bounds.top_left);
-                    bounds.bot_right = canvas_to_raster(milton_state->view, bounds.bot_right);
-                    custom_rectangle = rect_union(custom_rectangle, bounds);
-                }
-
-                mlt_assert(new_stroke.num_points > 0);
-                mlt_assert(new_stroke.num_points <= STROKE_MAX_POINTS);
-                auto* stroke = layer_push_stroke(milton_state->canvas->working_layer, new_stroke);
-
-                // Invalidate working stroke render element
-
-                HistoryElement h = { HistoryElement_STROKE_ADD, milton_state->canvas->working_layer->id };
-                push(&milton_state->canvas->history, h);
-                // Clear working_stroke
-                {
-                    milton_state->working_stroke.num_points = 0;
-                    milton_state->working_stroke.render_element.count = 0;
-                }
-
-                clear_stroke_redo(milton_state);
-            }
+            milton_end_stroke(milton_state);
         }
     }
     else if ( is_user_drawing(milton_state) ) {
